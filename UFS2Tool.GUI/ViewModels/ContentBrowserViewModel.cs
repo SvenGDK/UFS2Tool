@@ -155,7 +155,7 @@ public partial class ContentBrowserViewModel(ObservableCollection<string> output
                 }
             });
 
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            await Avalonia.Threading.Dispatcher.UIThread.InvokeAsync(() =>
             {
                 node.Children.Clear();
                 foreach (var child in children)
