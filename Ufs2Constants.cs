@@ -10,15 +10,20 @@ namespace UFS2Tool
     public static class Ufs2Constants
     {
         // Magic numbers
-        public const int Ufs1Magic = 0x00011954;       // UFS1 magic number (FS_UFS1_MAGIC)
-        public const int Ufs2Magic = 0x19540119;       // UFS2 magic number (FS_UFS2_MAGIC)
+        public const int Ufs1Magic = 0x00011954;        // UFS1 magic number (FS_UFS1_MAGIC)
+        public const int Ufs2Magic = 0x19540119;        // UFS2 magic number (FS_UFS2_MAGIC)
         public const int CgMagic = 0x090255;            // Cylinder group magic (CG_MAGIC)
-        public const int SuperblockOffset = 65536;      // SBLOCK_UFS2 superblock offset (64 KB)
+
+        public const int SuperblockOffsetEmbed = 0;     // superblock at start (Tiny/Embedded)
+        public const int SuperblockOffset8K = 8192;     // SBLOCK_UFS1 superblock offset (8 KB)
+        public const int SuperblockOffset64K = 65536;   // SBLOCK_UFS2 superblock offset (64 KB)
+        public const int SuperblockOffset256K = 262144; // extreme bootstrap superblock offset (256 KB)
         public const int SuperblockSize = 8192;         // Superblock size (SBLOCKSIZE)
         public const int MaxMntLen = 468;               // Max mount point length (MAXMNTLEN)
         public const int MaxVolLen = 32;                // Max volume name length (MAXVOLLEN)
         public const int NocsptrsSize = 28;             // NOCSPTRS
         public const int FsIdSize = 2;                  // Filesystem ID size
+        //public const int MagicSuperblockOffset = 0x55C;
 
         // Block sizes
         public const int DefaultBlockSize = 32768;      // 32 KB default block size

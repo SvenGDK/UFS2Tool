@@ -161,7 +161,7 @@ namespace UFS2Tool.Tests
             Assert.True(sb.NumCylGroups >= 1, "Should have at least 1 cylinder group");
             Assert.True(sb.InodesPerGroup > 0, "Should have inodes per group");
             Assert.True(sb.CylGroupSize > 0, "Should have fragments per group");
-            Assert.Equal(Ufs2Constants.SuperblockOffset, sb.SbBlockLoc);
+            Assert.Equal(Ufs2Constants.SuperblockOffset64K, sb.SbBlockLoc);
         }
 
         [Fact]

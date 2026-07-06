@@ -109,7 +109,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             long sbTotalFreeBlocks = 0;
@@ -415,7 +415,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sbRaw = Ufs2Superblock.ReadFrom(reader);
 
             long sumFreeBlocks = 0, sumFreeFrags = 0;
@@ -928,7 +928,7 @@ namespace UFS2Tool.Tests
             // Check 3: CG bitmaps match summary counts
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sbRaw = Ufs2Superblock.ReadFrom(reader);
 
             long sumFreeBlocks = 0, sumFreeFrags = 0;

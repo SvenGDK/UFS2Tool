@@ -37,7 +37,7 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // Read superblock
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.True(sb.ContigSumSize > 0, "ContigSumSize should be > 0 for cluster support");
@@ -104,7 +104,7 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // Read superblock
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // CG summary occupies fragments at csAddr
@@ -134,7 +134,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // CG size should include cluster data
@@ -167,7 +167,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Read the CG summary area at CsAddr
@@ -221,7 +221,7 @@ namespace UFS2Tool.Tests
                 using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
                 using var reader = new BinaryReader(fs);
 
-                fs.Position = Ufs2Constants.SuperblockOffset;
+                fs.Position = Ufs2Constants.SuperblockOffset64K;
                 var sb = Ufs2Superblock.ReadFrom(reader);
 
                 long csAreaOffset = sb.CsAddr * sb.FSize;
@@ -283,7 +283,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             for (int cg = 0; cg < sb.NumCylGroups; cg++)
@@ -332,7 +332,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.True(sb.NumCylGroups >= 2, "Need at least 2 CGs for this test");
@@ -392,7 +392,7 @@ namespace UFS2Tool.Tests
                 using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
                 using var reader = new BinaryReader(fs);
 
-                fs.Position = Ufs2Constants.SuperblockOffset;
+                fs.Position = Ufs2Constants.SuperblockOffset64K;
                 var sb = Ufs2Superblock.ReadFrom(reader);
 
                 // Check that backup superblocks match the primary
@@ -433,7 +433,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             int expectedIusedoff = Ufs2Constants.CgHeaderBaseSize; // 168 = sizeof(struct cg)

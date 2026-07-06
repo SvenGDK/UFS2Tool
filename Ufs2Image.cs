@@ -37,7 +37,7 @@ namespace UFS2Tool
         /// the backup superblock locations printed by newfs/growfs). Mirrors
         /// FreeBSD's <c>fsck_ffs -b block</c> behavior. When
         /// <paramref name="altSuperblockSector"/> is negative the primary superblock
-        /// at <see cref="Ufs2Constants.SuperblockOffset"/> is used.
+        /// at <see cref="Ufs2Constants.SuperblockOffset64K"/> is used.
         /// </summary>
         public Ufs2Image(string imagePath, bool readOnly, long altSuperblockSector)
         {
@@ -52,9 +52,22 @@ namespace UFS2Tool
 
             try
             {
-                long sbOffset = altSuperblockSector >= 0
-                    ? altSuperblockSector * Ufs2Constants.DefaultSectorSize
-                    : Ufs2Constants.SuperblockOffset;
+                long sbOffset = Ufs2Constants.SuperblockOffset64K;
+                if (altSuperblockSector >= 0)
+                {
+                    sbOffset = altSuperblockSector * Ufs2Constants.DefaultSectorSize;
+                }
+                else
+                {
+                    if (CheckForSuperblock(Ufs2Constants.SuperblockOffsetEmbed))
+                        sbOffset = Ufs2Constants.SuperblockOffsetEmbed;
+                    else if (CheckForSuperblock(Ufs2Constants.SuperblockOffset8K))
+                        sbOffset = Ufs2Constants.SuperblockOffset8K;
+                    else if (CheckForSuperblock(Ufs2Constants.SuperblockOffset64K))
+                        sbOffset = Ufs2Constants.SuperblockOffset64K;
+                    else if (CheckForSuperblock(Ufs2Constants.SuperblockOffset256K))
+                        sbOffset = Ufs2Constants.SuperblockOffset256K;
+                }
                 ReadSuperblock(sbOffset);
             }
             catch
@@ -66,7 +79,16 @@ namespace UFS2Tool
             }
         }
 
-        private void ReadSuperblock(long offset = Ufs2Constants.SuperblockOffset)
+        private bool CheckForSuperblock(long offset)
+        {
+            _stream.Position = offset;
+            //_stream.Position += Ufs2Constants.MagicSuperblockOffset;
+            //int Magic = _reader.ReadInt32();
+            var Superblock = Ufs2Superblock.ReadFrom(_reader);
+            return Superblock.IsValid;
+        }
+
+        private void ReadSuperblock(long offset = Ufs2Constants.SuperblockOffset64K)
         {
             if (offset < 0 || offset + Ufs2Constants.SuperblockSize > _stream.Length)
                 throw new InvalidDataException(
@@ -390,7 +412,7 @@ namespace UFS2Tool
             if (IsReadOnly)
                 throw new InvalidOperationException("Cannot write superblock: image is opened read-only.");
 
-            _stream.Position = Ufs2Constants.SuperblockOffset;
+            _stream.Position = Ufs2Constants.SuperblockOffset64K;
             Superblock.WriteTo(Writer);
             Writer.Flush();
         }
@@ -3024,7 +3046,7 @@ namespace UFS2Tool
             sb.MountPoint = "";
 
             // Write primary superblock
-            _stream.Position = Ufs2Constants.SuperblockOffset;
+            _stream.Position = Ufs2Constants.SuperblockOffset64K;
             sb.WriteTo(Writer);
             Writer.Flush();
 

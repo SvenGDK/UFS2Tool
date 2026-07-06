@@ -353,7 +353,7 @@ namespace UFS2Tool.Tests
                 using var fs = new FileStream(largePath, FileMode.Open, FileAccess.Read);
                 using var reader = new BinaryReader(fs);
 
-                fs.Position = Ufs2Constants.SuperblockOffset;
+                fs.Position = Ufs2Constants.SuperblockOffset64K;
                 var primary = Ufs2Superblock.ReadFrom(reader);
                 Assert.Equal("BACKUP", primary.VolumeName);
 
