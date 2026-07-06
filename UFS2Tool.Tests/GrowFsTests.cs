@@ -1,6 +1,8 @@
 // Copyright (c) 2026, SvenGDK
 // Licensed under the BSD 2-Clause License. See LICENSE file for details.
 
+using static System.Net.Mime.MediaTypeNames;
+
 namespace UFS2Tool.Tests
 {
     /// <summary>
@@ -142,6 +144,8 @@ namespace UFS2Tool.Tests
         [Fact]
         public void GrowFs_PreservesExistingFiles()
         {
+            byte[] readDataFromStream = new byte[5000];
+
             // Create an image with files
             string testDir = Path.Combine(Path.GetTempPath(), $"ufs2growfs_dir_{Guid.NewGuid():N}");
             Directory.CreateDirectory(testDir);
@@ -173,9 +177,14 @@ namespace UFS2Tool.Tests
 
                 // Verify file content
                 var helloInode = entries.Find(e => e.Name == "hello.txt")!.Inode;
-                byte[] content = verify.ReadFile(helloInode);
+                byte[] content = verify.ReadFileBytes(helloInode);
                 string text = System.Text.Encoding.UTF8.GetString(content).TrimEnd('\0');
                 Assert.Contains("Hello from growfs test!", text);
+
+                // stream test
+                using var msEntry = new ValidationWriteStream(content);
+                verify.ReadFile(helloInode, msEntry);
+                msEntry.AssertComplete();
             }
             finally
             {

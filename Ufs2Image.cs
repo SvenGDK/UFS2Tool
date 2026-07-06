@@ -318,162 +318,110 @@ namespace UFS2Tool
             actualBufferSize = Math.Min(actualBufferSize, Math.Max(1, Superblock.BSize));
             byte[] buffer = new byte[actualBufferSize];
 
-            long offset = 0;
-            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
-            int pointersPerBlock = Superblock.BSize / ptrSize;
-            long singleIndirectSpan = (long)pointersPerBlock * Superblock.BSize;
-            long doubleIndirectSpan = singleIndirectSpan * pointersPerBlock;
+            while (remaining > 0)
+            {
+                long logicalOffset = fileOffset + copied;
+                long logicalBlockIndex = logicalOffset / Superblock.BSize;
+                int offsetInBlock = (int)(logicalOffset % Superblock.BSize);
+                long toCopy = Math.Min(remaining, Superblock.BSize - offsetInBlock);
+
+                long dataBlockFrag = ResolveFileDataBlock(inode, logicalBlockIndex);
+                if (dataBlockFrag == 0)
+                {
+                    // Write zeros to stream		
+                    WriteZeroes(destination, toCopy, buffer);
+                }
+                else
+                {
+                    _stream.Position = dataBlockFrag * Superblock.FSize + offsetInBlock;
+                    CopyFromImageTo(destination, toCopy, buffer);
+                }
+
+                copied += toCopy;
+                remaining -= toCopy;
+            }
+
+            return copied;
+        }
+
+        private long ResolveFileDataBlock(Ufs2Inode inode, long logicalBlockIndex)
+        {
+            if (logicalBlockIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(logicalBlockIndex));
 
             // Direct blocks
-            for (int i = 0; i < Ufs2Constants.NDirect && offset < inode.Size; i++)
-            {
-                long toAdvance = Math.Min(Superblock.BSize, inode.Size - offset);
+            if (logicalBlockIndex < Ufs2Constants.NDirect)
+                return inode.DirectBlocks[(int)logicalBlockIndex];
+            logicalBlockIndex -= Ufs2Constants.NDirect;
 
-                if (inode.DirectBlocks[i] == 0)
-                {
-                    // Write zeros to stream
-                    WriteZeroes(destination, toAdvance, buffer);
-                    offset += toAdvance;
-                    continue;
-                }
-
-                long blockOffset = inode.DirectBlocks[i] * Superblock.FSize;
-                _stream.Position = blockOffset;
-
-                CopyFromImageTo(destination, toAdvance, buffer);
-                offset += toAdvance;
-            }
+            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
+            int pointersPerBlock = Superblock.BSize / ptrSize;
+            if (pointersPerBlock <= 0)
+                throw new InvalidDataException($"Invalid block size {Superblock.BSize} for pointer size {ptrSize}.");
 
             // Single indirect
-            if (offset < inode.Size)
+            if (logicalBlockIndex < pointersPerBlock)
             {
-                if (inode.IndirectBlocks[0] != 0)
-                    offset = ReadIndirectBlock(inode.IndirectBlocks[0], destination, offset, inode.Size, buffer);
-                else
-                    // Write zeroes to stream
-                    offset = WriteSparseRange(destination, offset, inode.Size, singleIndirectSpan, buffer);
+                if (inode.IndirectBlocks[0] == 0)
+                    return 0;
+
+                return ReadBlockPointer(inode.IndirectBlocks[0], (int)logicalBlockIndex);
             }
+            logicalBlockIndex -= pointersPerBlock;
 
             // Double indirect
-            if (offset < inode.Size)
+            long doubleIndirectBlockCount = (long)pointersPerBlock * pointersPerBlock;
+            if (logicalBlockIndex < doubleIndirectBlockCount)
             {
-                if (inode.IndirectBlocks[1] != 0)
-                    offset = ReadDoubleIndirectBlock(inode.IndirectBlocks[1], destination, offset, inode.Size, buffer);
-                else
-                    // Write zeroes to stream
-                    offset = WriteSparseRange(destination, offset, inode.Size, doubleIndirectSpan, buffer);
+                if (inode.IndirectBlocks[1] == 0)
+                    return 0;
+
+                int firstIndex = (int)(logicalBlockIndex / pointersPerBlock);
+                int secondIndex = (int)(logicalBlockIndex % pointersPerBlock);
+
+                long singleIndirectFrag = ReadBlockPointer(inode.IndirectBlocks[1], firstIndex);
+                if (singleIndirectFrag == 0)
+                    return 0;
+
+                return ReadBlockPointer(singleIndirectFrag, secondIndex);
             }
+            logicalBlockIndex -= doubleIndirectBlockCount;
 
             // Triple indirect
-            if (offset < inode.Size)
             {
-                if (inode.IndirectBlocks[2] != 0)
-                    offset = ReadTripleIndirectBlock(inode.IndirectBlocks[2], destination, offset, inode.Size, buffer);
-                else
-                    // Write zeroes to stream
-                    offset = WriteSparseRange(destination, offset, inode.Size, inode.Size - offset, buffer);
-            }
+                if (inode.IndirectBlocks[2] == 0)
+                    return 0;
 
-            if (offset < inode.Size)
-                throw new InvalidDataException(
-                    $"Inode {inodeNumber} ended before its declared size. Read {offset:N0} of {inode.Size:N0} bytes.");
+                long doubleIndirectIndexSpan = (long)pointersPerBlock * pointersPerBlock;
+                int outerIndex = (int)(logicalBlockIndex / doubleIndirectIndexSpan);
+                if (outerIndex >= pointersPerBlock)
+                    return 0;
+
+                long innerIndex = logicalBlockIndex % doubleIndirectIndexSpan;
+                int middleIndex = (int)(innerIndex / pointersPerBlock);
+                int leafIndex = (int)(innerIndex % pointersPerBlock);
+
+                long doubleIndirectFrag = ReadBlockPointer(inode.IndirectBlocks[2], outerIndex);
+                if (doubleIndirectFrag == 0)
+                    return 0;
+
+                long singleIndirectFrag2 = ReadBlockPointer(doubleIndirectFrag, middleIndex);
+                if (singleIndirectFrag2 == 0)
+                    return 0;
+
+                return ReadBlockPointer(singleIndirectFrag2, leafIndex);
+            }
         }
 
-        private long ReadIndirectBlock(long indirectBlockFrag, Stream destination, long offset, long fileSize, byte[] buffer)
+        private long ReadBlockPointer(long pointerBlockFrag, int pointerIndex)
         {
-            long blockOffset = indirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
-
             int ptrSize = Superblock.IsUfs1 ? 4 : 8; // UFS1: 32-bit, UFS2: 64-bit
             int pointersPerBlock = Superblock.BSize / ptrSize;
+            if (pointerIndex < 0 || pointerIndex >= pointersPerBlock)
+                throw new ArgumentOutOfRangeException(nameof(pointerIndex));
 
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
-            {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-                long toAdvance = Math.Min(Superblock.BSize, fileSize - offset);
-
-                if (ptr == 0)
-                {
-                    // Write zeros to stream
-                    WriteZeroes(destination, toAdvance, buffer);
-                    offset += toAdvance;
-                    continue;
-                }
-
-                _stream.Position = ptr * Superblock.FSize;
-                CopyFromImageTo(destination, toAdvance, buffer);
-                offset += toAdvance;
-
-                // Restore position for next pointer
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
-            }
-
-            return offset;
-        }
-
-        private long ReadDoubleIndirectBlock(long doubleIndirectBlockFrag, Stream destination, long offset, long fileSize, byte[] buffer)
-        {
-            long blockOffset = doubleIndirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
-
-            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
-            int pointersPerBlock = Superblock.BSize / ptrSize;
-            long indirectSpan = (long)pointersPerBlock * Superblock.BSize;
-
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
-            {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-
-                if (ptr == 0)
-                {
-                    // Write zeros to stream
-                    offset = WriteSparseRange(destination, offset, fileSize, indirectSpan, buffer);
-                    continue;
-                }
-
-                offset = ReadIndirectBlock(ptr, destination, offset, fileSize, buffer);
-
-                // Restore position for next pointer in the double-indirect block
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
-            }
-
-            return offset;
-        }
-
-        private long ReadTripleIndirectBlock(long tripleIndirectBlockFrag, Stream destination, long offset, long fileSize, byte[] buffer)
-        {
-            long blockOffset = tripleIndirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
-
-            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
-            int pointersPerBlock = Superblock.BSize / ptrSize;
-            long doubleIndirectSpan = (long)pointersPerBlock * pointersPerBlock * Superblock.BSize;
-
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
-            {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-
-                if (ptr == 0)
-                {
-                    // Write zeros to stream
-                    offset = WriteSparseRange(destination, offset, fileSize, doubleIndirectSpan, buffer);
-                    continue;
-                }
-
-                offset = ReadDoubleIndirectBlock(ptr, destination, offset, fileSize, buffer);
-
-                // Restore position for next pointer in the triple-indirect block
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
-            }
-
-            return offset;
-        }
-
-        private long WriteSparseRange(Stream destination, long offset, long fileSize, long span, byte[] buffer)
-        {
-            long toWrite = Math.Min(span, fileSize - offset);
-            WriteZeroes(destination, toWrite, buffer);
-            return offset + toWrite;
+            _stream.Position = pointerBlockFrag * Superblock.FSize + (long)pointerIndex * ptrSize;
+            return Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
         }
 
         private void CopyFromImageTo(Stream destination, long byteCount, byte[] buffer)
