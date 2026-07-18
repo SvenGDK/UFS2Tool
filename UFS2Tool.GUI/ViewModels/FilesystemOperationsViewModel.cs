@@ -95,6 +95,7 @@ public partial class FilesystemOperationsViewModel(ObservableCollection<string> 
         try
         {
             (int fileCount, int dirCount, int symlinkCount) = (0, 0, 0);
+            string report = "";
             await Task.Run(() =>
             {
                 using var image = new Ufs2Image(ImagePath, readOnly: true);
@@ -102,6 +103,7 @@ public partial class FilesystemOperationsViewModel(ObservableCollection<string> 
                     ? Ufs2Constants.RootInode
                     : image.ResolvePath(FsPath);
                 var entries = image.ListDirectory(dirInode);
+                var sb = new System.Text.StringBuilder();
 
                 Avalonia.Threading.Dispatcher.UIThread.Post(() =>
                 {
@@ -121,15 +123,19 @@ public partial class FilesystemOperationsViewModel(ObservableCollection<string> 
                 foreach (var entry in entries)
                 {
                     if (entry.Inode == 0 || entry.Name == "." || entry.Name == "..") continue;
+                    string typeStr = "???";
                     switch (entry.FileType)
                     {
-                        case 4: dirCount++; break;
-                        case 8: fileCount++; break;
-                        case 10: symlinkCount++; break;
+                        case Ufs2Constants.DtDir: typeStr = "DIR "; dirCount++; break;
+                        case Ufs2Constants.DtReg: typeStr = "FILE"; fileCount++; break;
+                        case Ufs2Constants.DtLnk: typeStr = "LINK"; symlinkCount++; break;
                     }
+                    sb.AppendLine($"  {typeStr}  {entry.Name}");
                 }
+                report = sb.ToString();
             });
             _outputLog.Add($"[LS] Listed directory: {FsPath} — {fileCount} file(s), {dirCount} dir(s), {symlinkCount} symlink(s)");
+            _outputLog.Add(report);
         }
         catch (Exception ex)
         {
