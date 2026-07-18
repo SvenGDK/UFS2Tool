@@ -68,7 +68,7 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // fs_fsbtodb is at offset 0x64 (100) in the superblock.
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x64;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x64;
             int fsbtodb = reader.ReadInt32();
 
             // Expected: log2(fsize / DEV_BSIZE) = log2(65536 / 512) = 7.
@@ -92,7 +92,7 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // fs_old_nspf is at offset 0x7C (124) in the superblock.
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x7C;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x7C;
             int nspf = reader.ReadInt32();
 
             // Expected: fsize / DEV_BSIZE = 65536 / 512 = 128.
@@ -121,7 +121,7 @@ namespace UFS2Tool.Tests
             // immediately before SBLOCK_UFS2. Recovery sector starts at 65024.
             const int devBsize = 512;
             const int recoverySize = 20;
-            long recoveryOffset = Ufs2Constants.SuperblockOffset - devBsize + (devBsize - recoverySize);
+            long recoveryOffset = Ufs2Constants.SuperblockOffset64K - devBsize + (devBsize - recoverySize);
 
             fs.Position = recoveryOffset;
             int fsrMagic = reader.ReadInt32();
@@ -143,7 +143,7 @@ namespace UFS2Tool.Tests
             // images by relocating the recovery block to offset 61440).
             if (userSectorSize > devBsize)
             {
-                fs.Position = Ufs2Constants.SuperblockOffset - userSectorSize;
+                fs.Position = Ufs2Constants.SuperblockOffset64K - userSectorSize;
                 byte[] preBuf = reader.ReadBytes(userSectorSize - devBsize);
                 foreach (byte b in preBuf)
                     Assert.Equal(0, b);
@@ -179,7 +179,7 @@ namespace UFS2Tool.Tests
             // (0x4B8-0x4BF). All other bytes — including the recovery block,
             // fs_fsbtodb, fs_old_nspf, CG headers, and inode tables — must
             // match exactly.
-            var sbBase = Ufs2Constants.SuperblockOffset;
+            var sbBase = Ufs2Constants.SuperblockOffset64K;
             var allowedRanges = new (long start, long end)[]
             {
                 (sbBase + 0x20, sbBase + 0x23), // fs_old_time
@@ -261,7 +261,7 @@ namespace UFS2Tool.Tests
 
             using var fs = new FileStream(_imagePathA, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.Equal(Ufs2Constants.Ufs2Magic, sb.Magic);

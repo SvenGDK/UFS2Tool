@@ -87,7 +87,7 @@ namespace UFS2Tool.Tests
             using (var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.ReadWrite))
             {
                 // Magic is at offset 0x55C within the superblock, which is at SBLOCK_UFS2 (65536)
-                fs.Position = Ufs2Constants.SuperblockOffset + 0x55C;
+                fs.Position = Ufs2Constants.SuperblockOffset64K + 0x55C;
                 var writer = new BinaryWriter(fs);
                 writer.Write(0xDEADBEEF);
                 writer.Flush();

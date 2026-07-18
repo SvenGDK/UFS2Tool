@@ -36,7 +36,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.Equal(Ufs2Constants.MaxBSize, sb.MaxBSize);
@@ -55,7 +55,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             int expectedMaxContig = Math.Max(1, Ufs2Constants.MaxBSize / sb.BSize);
@@ -75,7 +75,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             int expectedContigSumSize = Math.Min(sb.MaxContig, Ufs2Constants.MaxContig);
@@ -95,15 +95,15 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Read fs_sblockactualloc at offset 0x3E0
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x3E0;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x3E0;
             long sblockActualLoc = reader.ReadInt64();
 
-            Assert.Equal(Ufs2Constants.SuperblockOffset, sblockActualLoc);
-            Assert.Equal(Ufs2Constants.SuperblockOffset, sb.SbBlockLoc);
+            Assert.Equal(Ufs2Constants.SuperblockOffset64K, sblockActualLoc);
+            Assert.Equal(Ufs2Constants.SuperblockOffset64K, sb.SbBlockLoc);
         }
 
         /// <summary>
@@ -119,7 +119,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             long expectedFreeInodes = (long)sb.NumCylGroups * sb.InodesPerGroup - 3;
@@ -140,7 +140,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             long totalFreeInodes = 0;
@@ -173,7 +173,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.Equal(0, sb.NumClusters);
@@ -192,16 +192,16 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // fs_old_csaddr (0x098) should be set to CsAddr
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x098;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x098;
             int oldCsAddr = reader.ReadInt32();
             Assert.Equal((int)(sb.CsAddr & 0xFFFFFFFF), oldCsAddr);
 
             // fs_old_ncyl (0x0B0) should equal NumCylGroups
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x0B0;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x0B0;
             int oldNcyl = reader.ReadInt32();
             Assert.Equal(sb.NumCylGroups, oldNcyl);
 
@@ -210,7 +210,7 @@ namespace UFS2Tool.Tests
             Assert.Equal(1, oldCpg);
 
             // fs_old_postblformat (0x54C) should be -1 (FS_DYNAMICPOSTBLFMT)
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x54C;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x54C;
             int oldPostblFmt = reader.ReadInt32();
             Assert.Equal(Ufs2Constants.FsDynamicPostblFmt, oldPostblFmt);
 
@@ -233,7 +233,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Per FreeBSD mkfs.c: csfrags = howmany(cssize, fsize) (fragment-aligned)
@@ -465,7 +465,7 @@ namespace UFS2Tool.Tests
                 using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
                 using var reader = new BinaryReader(fs);
 
-                fs.Position = Ufs2Constants.SuperblockOffset;
+                fs.Position = Ufs2Constants.SuperblockOffset64K;
                 var sb = Ufs2Superblock.ReadFrom(reader);
 
                 // Read the root inode to find the root directory data block
@@ -528,7 +528,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             long inodeTableOffset = (long)sb.IblkNo * sb.FSize;
@@ -580,7 +580,7 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // fs_old_flags is at superblock offset 0x0D3 (1 byte)
-            fs.Position = Ufs2Constants.SuperblockOffset + 0x0D3;
+            fs.Position = Ufs2Constants.SuperblockOffset64K + 0x0D3;
             byte oldFlags = reader.ReadByte();
 
             Assert.True((oldFlags & Ufs2Constants.FsFlagsUpdated) != 0,
@@ -602,7 +602,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.True(sb.NumCylGroups > 1, "Need at least 2 CGs for this test");
@@ -657,7 +657,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             long totalFreeBlocks = 0;
@@ -697,7 +697,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Compute CG summary fragment counts (matching FreeBSD formulas)
@@ -763,7 +763,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Simulate fsck pass1: mark metadata and CG summary as used
@@ -862,13 +862,13 @@ namespace UFS2Tool.Tests
             using var reader = new BinaryReader(fs);
 
             // Read superblock for reference
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Recovery block is at end of sector before SBLOCK_UFS2
             int sectorSize = Ufs2Constants.DefaultSectorSize;
             int recoverySize = 20; // 5 × int32
-            long recoveryOffset = Ufs2Constants.SuperblockOffset - sectorSize + (sectorSize - recoverySize);
+            long recoveryOffset = Ufs2Constants.SuperblockOffset64K - sectorSize + (sectorSize - recoverySize);
 
             fs.Position = recoveryOffset;
             int fsrMagic = reader.ReadInt32();
@@ -902,7 +902,7 @@ namespace UFS2Tool.Tests
             // Recovery block position for UFS2 - should be zeros for UFS1
             int sectorSize = Ufs2Constants.DefaultSectorSize;
             int recoverySize = 20;
-            long recoveryOffset = Ufs2Constants.SuperblockOffset - sectorSize + (sectorSize - recoverySize);
+            long recoveryOffset = Ufs2Constants.SuperblockOffset64K - sectorSize + (sectorSize - recoverySize);
 
             fs.Position = recoveryOffset;
             int fsrMagic = reader.ReadInt32();
@@ -925,7 +925,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             int inodeSize = Ufs2Constants.Ufs2InodeSize;
@@ -963,7 +963,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             int inodeSize = Ufs2Constants.Ufs2InodeSize;
@@ -995,7 +995,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.Equal(sb.TotalBlocks, sb.ProviderSize);
@@ -1015,7 +1015,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             Assert.True(sb.MetaSpace >= 0, "fs_metaspace should be non-negative");
@@ -1038,7 +1038,7 @@ namespace UFS2Tool.Tests
             using var fs = new FileStream(_imagePath, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(fs);
 
-            fs.Position = Ufs2Constants.SuperblockOffset;
+            fs.Position = Ufs2Constants.SuperblockOffset64K;
             var sb = Ufs2Superblock.ReadFrom(reader);
 
             // Read root inode
