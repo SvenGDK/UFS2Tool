@@ -410,9 +410,14 @@ namespace UFS2Tool.Tests
                 // Verify large file
                 var rootEntries = image.ListRoot();
                 var largeEntry = rootEntries.First(e => e.Name == "large.bin");
-                byte[] readData = image.ReadFile(largeEntry.Inode);
+                byte[] readData = image.ReadFileBytes(largeEntry.Inode);
                 Assert.Equal(largeData.Length, readData.Length);
                 Assert.Equal(largeData, readData);
+
+                // stream test
+                using var ms = new ValidationWriteStream(readData);
+                image.ReadFile(largeEntry.Inode, ms);
+                ms.AssertComplete();
 
                 // Verify all subdirectories and nested content
                 for (int i = 0; i < 5; i++)

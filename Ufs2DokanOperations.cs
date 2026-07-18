@@ -165,23 +165,36 @@ namespace UFS2Tool
             if (inode == null)
                 return DokanResult.FileNotFound;
 
-            byte[] fileData;
-            lock (_lock)
+            try
             {
-                var inodeData = _image.ReadInode(inode.Value);
-                if (!inodeData.IsRegularFile && !inodeData.IsSymlink)
-                    return DokanResult.AccessDenied;
+                lock (_lock)
+                {
+                    var inodeData = _image.ReadInode(inode.Value);
+                    if (!inodeData.IsRegularFile && !inodeData.IsSymlink)
+                        return DokanResult.AccessDenied;
 
-                fileData = _image.ReadFile(inode.Value);
-            }
+                    if (offset >= inodeData.Size || buffer.Length == 0)
+                        return DokanResult.Success;
 
-            if (offset >= fileData.Length)
+                    long toRead = Math.Min(buffer.Length, inodeData.Size - offset);
+                    using var destination = new MemoryStream(buffer, 0, (int)toRead, writable: true, publiclyVisible: true);
+                    bytesRead = (int)_image.ReadFile(inode.Value, destination, offset, toRead, bufferSize: buffer.Length);
+                }
+
                 return DokanResult.Success;
-
-            int toRead = (int)Math.Min(buffer.Length, fileData.Length - offset);
-            Buffer.BlockCopy(fileData, (int)offset, buffer, 0, toRead);
-            bytesRead = toRead;
-            return DokanResult.Success;
+            }
+            catch (InvalidOperationException)
+            {
+                return DokanResult.AccessDenied;
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return DokanResult.InvalidParameter;
+            }
+            catch (IOException)
+            {
+                return DokanResult.Error;
+            }
         }
 
         public NtStatus WriteFile(string fileName, byte[] buffer, out int bytesWritten,
@@ -208,7 +221,7 @@ namespace UFS2Tool
                         return DokanResult.AccessDenied;
 
                     // Read existing file data, apply the write, then replace
-                    byte[] existingData = _image.ReadFile(inode.Value);
+                    byte[] existingData = _image.ReadFileBytes(inode.Value);
                     long newSize = Math.Max(existingData.Length, offset + buffer.Length);
                     if (newSize > int.MaxValue)
                         return DokanResult.InvalidParameter;
@@ -560,7 +573,7 @@ namespace UFS2Tool
                 lock (_lock)
                 {
                     string ufsPath = NormalizePath(fileName);
-                    byte[] existingData = _image.ReadFile(inode.Value);
+                    byte[] existingData = _image.ReadFileBytes(inode.Value);
                     byte[] newData = new byte[(int)length];
                     Buffer.BlockCopy(existingData, 0, newData, 0, Math.Min(existingData.Length, (int)length));
                     _image.ReplaceFileContent(ufsPath, newData);

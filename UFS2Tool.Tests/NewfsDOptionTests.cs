@@ -298,10 +298,15 @@ namespace UFS2Tool.Tests
             var rootEntries = image.ListRoot();
             var fileEntry = rootEntries.First(e => e.Name == "hello.txt");
 
-            byte[] fileData = image.ReadFile(fileEntry.Inode);
+            byte[] fileData = image.ReadFileBytes(fileEntry.Inode);
             string readContent = System.Text.Encoding.UTF8.GetString(fileData);
 
             Assert.Equal(content, readContent);
+
+            // stream test
+            using var ms = new ValidationWriteStream(fileData);
+            image.ReadFile(fileEntry.Inode, ms);
+            ms.AssertComplete();
         }
 
         [Fact]
@@ -322,9 +327,14 @@ namespace UFS2Tool.Tests
             var rootEntries = image.ListRoot();
             var fileEntry = rootEntries.First(e => e.Name == "binary.dat");
 
-            byte[] readData = image.ReadFile(fileEntry.Inode);
+            byte[] readData = image.ReadFileBytes(fileEntry.Inode);
             Assert.Equal(originalData.Length, readData.Length);
             Assert.Equal(originalData, readData);
+
+            // stream test
+            using var ms = new ValidationWriteStream(readData);
+            image.ReadFile(fileEntry.Inode, ms);
+            ms.AssertComplete();
         }
 
         [Fact]
@@ -508,8 +518,14 @@ namespace UFS2Tool.Tests
 
             // Verify file content is preserved
             var fileEntry = rootEntries.First(e => e.Name == "file1.txt");
-            string content = System.Text.Encoding.UTF8.GetString(image.ReadFile(fileEntry.Inode));
+            byte[] data = image.ReadFileBytes(fileEntry.Inode);
+            string content = System.Text.Encoding.UTF8.GetString(data);
             Assert.Equal("hello world", content);
+
+            // stream test
+            using var ms = new ValidationWriteStream(data);
+            image.ReadFile(fileEntry.Inode, ms);
+            ms.AssertComplete();
         }
 
         [Fact]
@@ -559,8 +575,14 @@ namespace UFS2Tool.Tests
 
             // Verify file content at leaf
             var deepFile = entries.First(e => e.Name == "deep.txt");
-            string content = System.Text.Encoding.UTF8.GetString(image.ReadFile(deepFile.Inode));
+            byte[] data = image.ReadFileBytes(deepFile.Inode);
+            string content = System.Text.Encoding.UTF8.GetString(data);
             Assert.Equal("deep content", content);
+
+            // stream test
+            using var ms = new ValidationWriteStream(data);
+            image.ReadFile(deepFile.Inode, ms);
+            ms.AssertComplete();
         }
 
         [Fact]
@@ -653,8 +675,14 @@ namespace UFS2Tool.Tests
 
                 // Verify file content
                 var fileEntry = dirEntries.First(e => e.Name == $"file_at_level{i}.txt");
-                string content = System.Text.Encoding.UTF8.GetString(image.ReadFile(fileEntry.Inode));
+                var data = image.ReadFileBytes(fileEntry.Inode);
+                string content = System.Text.Encoding.UTF8.GetString(data);
                 Assert.Equal($"Content at level {i}", content);
+
+                // stream test
+                using var ms = new ValidationWriteStream(data);
+                image.ReadFile(fileEntry.Inode, ms);
+                ms.AssertComplete();
 
                 currentDirInode = levelDir.Inode;
             }
@@ -694,8 +722,13 @@ namespace UFS2Tool.Tests
             {
                 string expectedName = $"item_{i:D04}.txt";
                 var entry = fileEntries.First(e => e.Name == expectedName);
-                byte[] data = image.ReadFile(entry.Inode);
+                byte[] data = image.ReadFileBytes(entry.Inode);
                 Assert.Equal($"data_{i}", System.Text.Encoding.UTF8.GetString(data));
+
+                // stream test
+                using var ms = new ValidationWriteStream(data);
+                image.ReadFile(entry.Inode, ms);
+                ms.AssertComplete();
             }
 
             // Verify directory "." and ".." entries
@@ -726,13 +759,24 @@ namespace UFS2Tool.Tests
             // Verify large file content
             var rootEntries = image.ListRoot();
             var largeEntry = rootEntries.First(e => e.Name == "large.bin");
-            byte[] readData = image.ReadFile(largeEntry.Inode);
+            byte[] readData = image.ReadFileBytes(largeEntry.Inode);
             Assert.Equal(largeData.Length, readData.Length);
             Assert.Equal(largeData, readData);
 
+            // stream test
+            using var ms = new ValidationWriteStream(readData);
+            image.ReadFile(largeEntry.Inode, ms);
+            ms.AssertComplete();
+
             // Verify small file content
             var smallEntry = rootEntries.First(e => e.Name == "small.txt");
-            Assert.Equal("hello", System.Text.Encoding.UTF8.GetString(image.ReadFile(smallEntry.Inode)));
+            var data = image.ReadFileBytes(smallEntry.Inode);
+            Assert.Equal("hello", System.Text.Encoding.UTF8.GetString(data));
+
+            // stream test
+            using var ms2 = new ValidationWriteStream(data);
+            image.ReadFile(smallEntry.Inode, ms2);
+            ms2.AssertComplete();
 
             // Verify inode has indirect block pointer set
             var inode = image.ReadInode(largeEntry.Inode);

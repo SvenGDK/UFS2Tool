@@ -1111,9 +1111,14 @@ namespace UFS2Tool.Tests
                 if (e.FileType != Ufs2Constants.DtReg) continue;
                 if (!e.Name.StartsWith("file_") || !e.Name.EndsWith(".txt")) continue;
                 int idx = int.Parse(e.Name.Substring("file_".Length, e.Name.Length - "file_".Length - ".txt".Length));
-                byte[] data = image.ReadFile(e.Inode);
+                byte[] data = image.ReadFileBytes(e.Inode);
                 string content = System.Text.Encoding.UTF8.GetString(data);
                 Assert.Equal($"content_{idx}_data", content);
+
+                // stream test
+                using var msEntry = new ValidationWriteStream(data);
+                image.ReadFile(e.Inode, msEntry);
+                msEntry.AssertComplete();
             }
 
             // Verify binary file content
@@ -1122,8 +1127,13 @@ namespace UFS2Tool.Tests
             var subEntries = image.ListDirectory(subEntry.Inode);
             var binEntry = subEntries.Find(e => e.Name == "binary.bin");
             Assert.NotNull(binEntry);
-            byte[] readData = image.ReadFile(binEntry.Inode);
+            byte[] readData = image.ReadFileBytes(binEntry.Inode);
             Assert.Equal(binaryData, readData);
+
+            // stream test
+            using var ms = new ValidationWriteStream(binaryData);
+            image.ReadFile(binEntry.Inode, ms);
+            ms.AssertComplete();
         }
     }
 }

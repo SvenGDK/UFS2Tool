@@ -242,143 +242,211 @@ namespace UFS2Tool
         /// <summary>
         /// Read the contents of a regular file or symlink by inode number.
         /// </summary>
-        public byte[] ReadFile(uint inodeNumber)
+        public byte[] ReadFileBytes(uint inodeNumber)
         {
             var inode = ReadInode(inodeNumber);
             if (!inode.IsRegularFile && !inode.IsSymlink)
                 throw new InvalidOperationException($"Inode {inodeNumber} is not a regular file or symlink.");
 
+            if (inode.Size < 0)
+                throw new InvalidDataException($"Inode {inodeNumber} has an invalid negative size ({inode.Size}).");
+
             if (inode.Size > int.MaxValue)
                 throw new InvalidOperationException(
                     $"File too large to read into memory ({inode.Size:N0} bytes exceeds {int.MaxValue:N0} byte limit).");
 
-            byte[] data = new byte[inode.Size];
-            long offset = 0;
-
-            // Direct blocks
-            for (int i = 0; i < Ufs2Constants.NDirect && offset < inode.Size; i++)
-            {
-                long toAdvance = Math.Min(Superblock.BSize, inode.Size - offset);
-
-                if (inode.DirectBlocks[i] == 0)
-                {
-                    // Sparse hole: data is already zero-filled, just advance offset
-                    offset += toAdvance;
-                    continue;
-                }
-
-                long blockOffset = inode.DirectBlocks[i] * Superblock.FSize;
-                _stream.Position = blockOffset;
-
-                ReadFully(data, (int)offset, (int)toAdvance);
-                offset += toAdvance;
-            }
-
-            // Single indirect
-            if (offset < inode.Size && inode.IndirectBlocks[0] != 0)
-            {
-                offset = ReadIndirectBlock(inode.IndirectBlocks[0], data, offset, inode.Size);
-            }
-
-            // Double indirect
-            if (offset < inode.Size && inode.IndirectBlocks[1] != 0)
-            {
-                offset = ReadDoubleIndirectBlock(inode.IndirectBlocks[1], data, offset, inode.Size);
-            }
-
-            // Triple indirect
-            if (offset < inode.Size && inode.IndirectBlocks[2] != 0)
-            {
-                offset = ReadTripleIndirectBlock(inode.IndirectBlocks[2], data, offset, inode.Size);
-            }
-
+            byte[] data = new byte[(int)inode.Size];
+            using var ms = new MemoryStream(data, writable: true);
+            ReadFileToStream(inodeNumber, inode, ms, bufferSize: 1024 * 1024);
             return data;
         }
 
-        private long ReadIndirectBlock(long indirectBlockFrag, byte[] data, long offset, long fileSize)
+        /// <summary>
+        /// Read the entire contents of a regular file or symlink by inode number
+        /// into <paramref name="destination"/> without materializing the whole file
+        /// in memory.
+        /// </summary>
+        public void ReadFile(uint inodeNumber, Stream destination, int bufferSize = 1024 * 1024)
         {
-            long blockOffset = indirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
+            var inode = ReadInode(inodeNumber);
+            ReadFileToStream(inodeNumber, inode, destination, bufferSize);
+        }
 
+        /// <summary>
+        /// Read a byte range from a regular file or symlink by inode number into
+        /// <paramref name="destination"/>. Returns the number of bytes copied.
+        /// This is optimized for random-access callers such as Dokany ReadFile.
+        /// </summary>
+        public long ReadFile(uint inodeNumber, Stream destination, long fileOffset, long count, int bufferSize = 1024 * 1024)
+        {
+            var inode = ReadInode(inodeNumber);
+            return ReadFileRangeToStream(inodeNumber, inode, destination, fileOffset, count, bufferSize);
+        }
+
+        private void ReadFileToStream(uint inodeNumber, Ufs2Inode inode, Stream destination, int bufferSize)
+        {
+            ReadFileRangeToStream(inodeNumber, inode, destination, fileOffset: 0, count: long.MaxValue, bufferSize);
+        }
+
+        private long ReadFileRangeToStream(uint inodeNumber, Ufs2Inode inode, Stream destination, long fileOffset, long count, int bufferSize)
+        {
+            if (destination is null)
+                throw new ArgumentNullException(nameof(destination));
+
+            if (!destination.CanWrite)
+                throw new ArgumentException("Destination stream must be writable.", nameof(destination));
+
+            if (!inode.IsRegularFile && !inode.IsSymlink)
+                throw new InvalidOperationException($"Inode {inodeNumber} is not a regular file or symlink.");
+
+            if (inode.Size < 0)
+                throw new InvalidDataException($"Inode {inodeNumber} has an invalid negative size ({inode.Size}).");
+
+            if (fileOffset < 0)
+                throw new ArgumentOutOfRangeException(nameof(fileOffset), "File offset must be non-negative.");
+
+            if (count < 0)
+                throw new ArgumentOutOfRangeException(nameof(count), "Read count must be non-negative.");
+
+            if (count == 0 || fileOffset >= inode.Size)
+                return 0;
+
+            long remaining = Math.Min(count, inode.Size - fileOffset);
+            long copied = 0;
+
+            int actualBufferSize = bufferSize <= 0 ? 1024 * 1024 : bufferSize;
+            actualBufferSize = Math.Min(actualBufferSize, Math.Max(1, Superblock.BSize));
+            byte[] buffer = new byte[actualBufferSize];
+
+            while (remaining > 0)
+            {
+                long logicalOffset = fileOffset + copied;
+                long logicalBlockIndex = logicalOffset / Superblock.BSize;
+                int offsetInBlock = (int)(logicalOffset % Superblock.BSize);
+                long toCopy = Math.Min(remaining, Superblock.BSize - offsetInBlock);
+
+                long dataBlockFrag = ResolveFileDataBlock(inode, logicalBlockIndex);
+                if (dataBlockFrag == 0)
+                {
+                    // Write zeros to stream		
+                    WriteZeroes(destination, toCopy, buffer);
+                }
+                else
+                {
+                    _stream.Position = dataBlockFrag * Superblock.FSize + offsetInBlock;
+                    CopyFromImageTo(destination, toCopy, buffer);
+                }
+
+                copied += toCopy;
+                remaining -= toCopy;
+            }
+
+            return copied;
+        }
+
+        private long ResolveFileDataBlock(Ufs2Inode inode, long logicalBlockIndex)
+        {
+            if (logicalBlockIndex < 0)
+                throw new ArgumentOutOfRangeException(nameof(logicalBlockIndex));
+
+            // Direct blocks
+            if (logicalBlockIndex < Ufs2Constants.NDirect)
+                return inode.DirectBlocks[(int)logicalBlockIndex];
+            logicalBlockIndex -= Ufs2Constants.NDirect;
+
+            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
+            int pointersPerBlock = Superblock.BSize / ptrSize;
+            if (pointersPerBlock <= 0)
+                throw new InvalidDataException($"Invalid block size {Superblock.BSize} for pointer size {ptrSize}.");
+
+            // Single indirect
+            if (logicalBlockIndex < pointersPerBlock)
+            {
+                if (inode.IndirectBlocks[0] == 0)
+                    return 0;
+
+                return ReadBlockPointer(inode.IndirectBlocks[0], (int)logicalBlockIndex);
+            }
+            logicalBlockIndex -= pointersPerBlock;
+
+            // Double indirect
+            long doubleIndirectBlockCount = (long)pointersPerBlock * pointersPerBlock;
+            if (logicalBlockIndex < doubleIndirectBlockCount)
+            {
+                if (inode.IndirectBlocks[1] == 0)
+                    return 0;
+
+                int firstIndex = (int)(logicalBlockIndex / pointersPerBlock);
+                int secondIndex = (int)(logicalBlockIndex % pointersPerBlock);
+
+                long singleIndirectFrag = ReadBlockPointer(inode.IndirectBlocks[1], firstIndex);
+                if (singleIndirectFrag == 0)
+                    return 0;
+
+                return ReadBlockPointer(singleIndirectFrag, secondIndex);
+            }
+            logicalBlockIndex -= doubleIndirectBlockCount;
+
+            // Triple indirect
+            {
+                if (inode.IndirectBlocks[2] == 0)
+                    return 0;
+
+                long doubleIndirectIndexSpan = (long)pointersPerBlock * pointersPerBlock;
+                int outerIndex = (int)(logicalBlockIndex / doubleIndirectIndexSpan);
+                if (outerIndex >= pointersPerBlock)
+                    return 0;
+
+                long innerIndex = logicalBlockIndex % doubleIndirectIndexSpan;
+                int middleIndex = (int)(innerIndex / pointersPerBlock);
+                int leafIndex = (int)(innerIndex % pointersPerBlock);
+
+                long doubleIndirectFrag = ReadBlockPointer(inode.IndirectBlocks[2], outerIndex);
+                if (doubleIndirectFrag == 0)
+                    return 0;
+
+                long singleIndirectFrag2 = ReadBlockPointer(doubleIndirectFrag, middleIndex);
+                if (singleIndirectFrag2 == 0)
+                    return 0;
+
+                return ReadBlockPointer(singleIndirectFrag2, leafIndex);
+            }
+        }
+
+        private long ReadBlockPointer(long pointerBlockFrag, int pointerIndex)
+        {
             int ptrSize = Superblock.IsUfs1 ? 4 : 8; // UFS1: 32-bit, UFS2: 64-bit
             int pointersPerBlock = Superblock.BSize / ptrSize;
+            if (pointerIndex < 0 || pointerIndex >= pointersPerBlock)
+                throw new ArgumentOutOfRangeException(nameof(pointerIndex));
 
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
-            {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-                if (ptr == 0)
-                {
-                    // Sparse hole: data is already zero-filled, just advance offset
-                    offset += Math.Min(Superblock.BSize, fileSize - offset);
-                    continue;
-                }
-
-                long dataOffset = ptr * Superblock.FSize;
-                _stream.Position = dataOffset;
-
-                int toRead = (int)Math.Min(Superblock.BSize, fileSize - offset);
-                ReadFully(data, (int)offset, toRead);
-                offset += toRead;
-
-                // Restore position for next pointer
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
-            }
-
-            return offset;
+            _stream.Position = pointerBlockFrag * Superblock.FSize + (long)pointerIndex * ptrSize;
+            return Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
         }
 
-        private long ReadDoubleIndirectBlock(long doubleIndirectBlockFrag, byte[] data, long offset, long fileSize)
+        private void CopyFromImageTo(Stream destination, long byteCount, byte[] buffer)
         {
-            long blockOffset = doubleIndirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
-
-            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
-            int pointersPerBlock = Superblock.BSize / ptrSize;
-
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
+            long remaining = byteCount;
+            while (remaining > 0)
             {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-                if (ptr == 0)
-                {
-                    // Sparse hole: skip entire indirect block's worth of data
-                    offset = Math.Min(offset + (long)pointersPerBlock * Superblock.BSize, fileSize);
-                    continue;
-                }
-
-                offset = ReadIndirectBlock(ptr, data, offset, fileSize);
-
-                // Restore position for next pointer in the double-indirect block
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
+                int toRead = (int)Math.Min(buffer.Length, remaining);
+                ReadFully(buffer, 0, toRead);
+                destination.Write(buffer, 0, toRead);
+                remaining -= toRead;
             }
-
-            return offset;
         }
 
-        private long ReadTripleIndirectBlock(long tripleIndirectBlockFrag, byte[] data, long offset, long fileSize)
+        private static void WriteZeroes(Stream destination, long byteCount, byte[] buffer)
         {
-            long blockOffset = tripleIndirectBlockFrag * Superblock.FSize;
-            _stream.Position = blockOffset;
+            Array.Clear(buffer, 0, buffer.Length);
 
-            int ptrSize = Superblock.IsUfs1 ? 4 : 8;
-            int pointersPerBlock = Superblock.BSize / ptrSize;
-
-            for (int i = 0; i < pointersPerBlock && offset < fileSize; i++)
+            long remaining = byteCount;
+            while (remaining > 0)
             {
-                long ptr = Superblock.IsUfs1 ? _reader.ReadInt32() : _reader.ReadInt64();
-                if (ptr == 0)
-                {
-                    // Sparse hole: skip entire double-indirect block's worth of data
-                    offset = Math.Min(offset + (long)pointersPerBlock * pointersPerBlock * Superblock.BSize, fileSize);
-                    continue;
-                }
-
-                offset = ReadDoubleIndirectBlock(ptr, data, offset, fileSize);
-
-                // Restore position for next pointer in the triple-indirect block
-                _stream.Position = blockOffset + ((long)(i + 1) * ptrSize);
+                int toWrite = (int)Math.Min(buffer.Length, remaining);
+                destination.Write(buffer, 0, toWrite);
+                remaining -= toWrite;
             }
-
-            return offset;
         }
 
         /// <summary>
@@ -806,11 +874,12 @@ namespace UFS2Tool
         /// </summary>
         public void ExtractFile(uint inodeNumber, string outputPath)
         {
-            byte[] data = ReadFile(inodeNumber);
             string? dir = Path.GetDirectoryName(outputPath);
             if (!string.IsNullOrEmpty(dir))
                 Directory.CreateDirectory(dir);
-            File.WriteAllBytes(outputPath, data);
+
+            using var output = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None, bufferSize: 1024 * 1024);
+            ReadFile(inodeNumber, output);
         }
 
         /// <summary>
@@ -843,7 +912,7 @@ namespace UFS2Tool
                     var inode = ReadInode(entry.Inode);
                     if (inode.Size > 0 && inode.Size < Superblock.BSize)
                     {
-                        byte[] linkData = ReadFile(entry.Inode);
+                        byte[] linkData = ReadFileBytes(entry.Inode);
                         string target = System.Text.Encoding.UTF8.GetString(linkData).TrimEnd('\0');
                         // Write symlink target as a text file (symlinks may not be supported on host OS)
                         File.WriteAllText(destPath, target);
